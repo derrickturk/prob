@@ -10,11 +10,14 @@ module Control.Monad.Prob (
   , trials
   , meanMC
   , probMC
+  , shuffle
+  , withoutReplacement
 ) where
 
 import Control.Monad (replicateM)
 import Control.Monad.Trans.State.Lazy
 import System.Random (random, randomR, Random, RandomGen, getStdRandom)
+import qualified System.Random.Shuffle as RS (shuffle)
 
 newtype Prob a = Prob { sampleProb :: forall g . (RandomGen g) => State g a }
 
@@ -86,3 +89,12 @@ uniform xs = Prob $ do
   let l = length xs
   i <- genR (0, l - 1)
   return $ xs !! i
+
+shuffle :: [a] -> Prob [a]
+shuffle xs = Prob $ do
+  let l = length xs
+  u <- traverse (\i -> genR (0, l - i)) [1..l]
+  return $ RS.shuffle xs u
+
+withoutReplacement :: Int -> [a] -> Prob [a]
+withoutReplacement n = (fmap $ take n) . shuffle
