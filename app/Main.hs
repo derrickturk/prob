@@ -1,5 +1,6 @@
 module Main where
 
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Lazy
 import Control.Monad.Prob
 import Control.Monad (when, replicateM)
@@ -52,6 +53,22 @@ bimodalSkewed = choose (0.6 :: Double) success failure where
   success = condition (< 1e6) $ exp <$> normal (log 1.5e5) 1.5
   failure = normal (-2e5) 25000
 
+pokerDecision :: StateT Double Prob Double
+pokerDecision = do
+  modify (subtract 5) -- ante up
+  stayForFlop <- lift $ binary (0.7 :: Double)
+  when stayForFlop $ do
+    modify (subtract 5) -- 5 more to stay in
+    stayForTurn <- lift $ binary (0.5 :: Double)
+    when stayForTurn $ do
+      modify (subtract 5)
+      stayForRiver <- lift $ binary (0.6 :: Double)
+      when stayForRiver $ do
+        modify (subtract 5)
+        winHand <- lift $ binary (0.7 :: Double)
+        when winHand $ modify (+ 120) -- we win the pot
+  get -- return our final payout or loss
+
 showR :: Show a => [a] -> String
 showR = ("c(" ++) . (++ ")") . concat . intersperse ", " . fmap show
 
@@ -60,5 +77,7 @@ main = do
   args <- getArgs
   when (length args == 1) $ do
     let file = head args
-    trials <- sampleProbRIO $ trials 1000 bimodalSkewed
-    withFile file WriteMode $ flip hPutStrLn $ "bimodal <- " ++ showR trials
+    -- trials <- sampleProbRIO $ trials 1000 bimodalSkewed
+    -- withFile file WriteMode $ flip hPutStrLn $ "bimodal <- " ++ showR trials
+    trials <- sampleProbRIO $ trials 10000 $ evalStateT pokerDecision 0.0
+    withFile file WriteMode $ flip hPutStrLn $ "poker <- " ++ showR trials

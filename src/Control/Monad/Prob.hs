@@ -106,12 +106,10 @@ probMC n e p = ((/ realToFrac n)
 always :: a -> Prob a
 always e = Prob $ return e
 
-binary :: (Random p, Fractional p, Ord p) => p -> a -> b -> Prob (Either a b)
-binary p l r = Prob $ do
+binary :: (Random p, Fractional p, Ord p) => p -> Prob Bool
+binary p = Prob $ do
   q <- genQuantile
-  if q <= p
-    then return $ Left l
-    else return $ Right r
+  return $ q <= p
 
 -- this is a little redundant
 choose :: (Random p, Fractional p, Ord p) => p -> Prob a -> Prob a -> Prob a
