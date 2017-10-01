@@ -6,7 +6,7 @@ import Control.Monad.Prob
 import Control.Monad (when, replicateM)
 import Data.List (intersperse)
 import System.Environment (getArgs)
-import System.IO (withFile, IOMode(WriteMode), hPrint, hPutStrLn)
+import System.IO (withFile, IOMode(AppendMode, WriteMode), hPrint, hPutStrLn)
 
 die :: Prob Int
 die = uniformDiscrete [1..6]
@@ -50,7 +50,7 @@ drawCard = do
 
 bimodalSkewed :: Prob Double
 bimodalSkewed = choose (0.6 :: Double) success failure where
-  success = condition (< 1e6) $ exp <$> normal (log 1.5e5) 1.5
+  success = condition (< 1e6) $ lognormalMeanRatio 1.5e5 2
   failure = normal (-2e5) 25000
 
 pokerDecision :: StateT Double Prob Double
@@ -79,16 +79,15 @@ data VoiStage = VoiStage { stageCost :: Double
                          , stageChance :: Double
                          }
 
-voiGame :: [VoiStage] -> StateT Double Prob (Double, Bool)
+voiGame :: [VoiStage] -> StateT Double Prob Double
 voiGame stages = do
   actualSuccess <- lift $ binary (0.3 :: Double)
   doIt <- runStages actualSuccess stages
   when doIt $ modify (subtract 200)
   when (doIt && actualSuccess) $ do
-    payout <- lift $ exp <$> normal (log 500) 0.7
+    payout <- lift $ lognormalMeanRatio 500 5
     modify (+ payout)
-  net <- get
-  return (net, doIt == actualSuccess)
+  get
 
 runStages :: Bool -> [VoiStage] -> StateT Double Prob Bool
 runStages _ [] = return True
@@ -111,10 +110,10 @@ appStage = VoiStage {
                     , stageChance = 0.9
                     }
 
-naiveGame :: StateT Double Prob (Double, Bool)
+naiveGame :: StateT Double Prob Double
 naiveGame = voiGame []
 
-stagedGame :: StateT Double Prob (Double, Bool)
+stagedGame :: StateT Double Prob Double
 stagedGame = voiGame [explStage, appStage]
 
 main :: IO ()
@@ -122,11 +121,11 @@ main = do
   args <- getArgs
   when (length args == 1) $ do
     let file = head args
-    -- trials <- sampleProbRIO $ trials 1000 bimodalSkewed
-    -- withFile file WriteMode $ flip hPutStrLn $ "bimodal <- " ++ showR trials
-    -- trials <- sampleProbRIO $ trials 10000 $ evalStateT pokerDecision 0.0
-    -- withFile file WriteMode $ flip hPutStrLn $ showRNamed "poker" trials
-    -- trials <- sampleProbRIO $ trials 10000 $ evalStateT naiveGame 0.0
-    -- withFile file WriteMode $ flip hPutStrLn $ showRNamed "naiveGame" trials
-    trials <- sampleProbRIO $ trials 10000 $ evalStateT stagedGame 0.0
-    withFile file WriteMode $ flip hPutStrLn $ showRNamed "stagedGame" trials
+    ts <- sampleProbRIO $ trials 1000 bimodalSkewed
+    withFile file WriteMode $ flip hPutStrLn $ "bimodal <- " ++ showR ts
+    ts <- sampleProbRIO $ trials 10000 $ evalStateT pokerDecision 0.0
+    withFile file AppendMode $ flip hPutStrLn $ showRNamed "poker" ts
+    ts <- sampleProbRIO $ trials 10000 $ evalStateT naiveGame 0.0
+    withFile file AppendMode $ flip hPutStrLn $ showRNamed "naiveGame" ts
+    ts <- sampleProbRIO $ trials 10000 $ evalStateT stagedGame 0.0
+    withFile file AppendMode $ flip hPutStrLn $ showRNamed "stagedGame" ts

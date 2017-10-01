@@ -10,6 +10,10 @@ module Control.Monad.Prob (
   , uniform
   , normal
   , normals
+  , lognormal
+  , lognormalMeanRatio
+  , lognormals
+  , lognormalsMeanRatio
   , clamp
   , condition
   , trials
@@ -133,7 +137,28 @@ normals n mean sd
   | n >= 2 = Prob $ do
       (z1, z2) <- genStandardNormals
       rest <- sampleProb $ normals (n - 2) mean sd
-      return $ z1:z2:rest
+      return $ (mean + z1 * sd):(mean + z2 * sd):rest
+
+lognormal :: (Random p, Floating p, Ord p) => p -> p -> Prob p
+lognormal logmean logsd = exp <$> normal logmean logsd
+
+-- TODO: handle arbitrary-quantile ratio?
+logParamsFromMeanRatio :: (Floating p) => p -> p -> (p, p)
+logParamsFromMeanRatio mean p10p90 = (logMean, logSD) where
+  logSD = log p10p90 / 2.5631031310892016
+  logMean = log mean - logSD * logSD / 2.0
+
+lognormalMeanRatio :: (Random p, Floating p, Ord p) => p -> p -> Prob p
+lognormalMeanRatio mean p10p90 = lognormal logmean logsd where
+  (logmean, logsd) = logParamsFromMeanRatio mean p10p90
+
+lognormals :: (Random p, Floating p, Ord p) => Int -> p -> p -> Prob [p]
+lognormals n logmean logsd = (fmap . fmap) exp $ normals n logmean logsd
+
+lognormalsMeanRatio :: (Random p, Floating p, Ord p) => Int -> p -> p -> Prob [p]
+lognormalsMeanRatio n mean p10p90 =
+  let (logmean, logsd) = logParamsFromMeanRatio mean p10p90 in
+  (fmap . fmap) exp $ normals n logmean logsd
 
 shuffle :: [a] -> Prob [a]
 shuffle xs = Prob $ do
