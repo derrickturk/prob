@@ -72,6 +72,51 @@ pokerDecision = do
 showR :: Show a => [a] -> String
 showR = ("c(" ++) . (++ ")") . concat . intersperse ", " . fmap show
 
+showRNamed :: Show a => String -> [a] -> String
+showRNamed name = (name ++) . (" <- " ++) . showR
+
+data VoiStage = VoiStage { stageCost :: Double
+                         , stageChance :: Double
+                         }
+
+voiGame :: [VoiStage] -> StateT Double Prob (Double, Bool)
+voiGame stages = do
+  actualSuccess <- lift $ binary (0.3 :: Double)
+  doIt <- runStages actualSuccess stages
+  when doIt $ modify (subtract 200)
+  when (doIt && actualSuccess) $ do
+    payout <- lift $ exp <$> normal (log 500) 0.7
+    modify (+ payout)
+  net <- get
+  return (net, doIt == actualSuccess)
+
+runStages :: Bool -> [VoiStage] -> StateT Double Prob Bool
+runStages _ [] = return True
+runStages actualSuccess (s:stages) = do
+  modify (subtract $ stageCost s)
+  correctMeasurement <- lift $ binary $ stageChance s
+  if correctMeasurement && not actualSuccess
+    then return False
+    else runStages actualSuccess stages
+
+explStage :: VoiStage
+explStage = VoiStage {
+                       stageCost = 50
+                     , stageChance = 0.6
+                     }
+
+appStage :: VoiStage
+appStage = VoiStage {
+                      stageCost = 50
+                    , stageChance = 0.9
+                    }
+
+naiveGame :: StateT Double Prob (Double, Bool)
+naiveGame = voiGame []
+
+stagedGame :: StateT Double Prob (Double, Bool)
+stagedGame = voiGame [explStage, appStage]
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -79,5 +124,9 @@ main = do
     let file = head args
     -- trials <- sampleProbRIO $ trials 1000 bimodalSkewed
     -- withFile file WriteMode $ flip hPutStrLn $ "bimodal <- " ++ showR trials
-    trials <- sampleProbRIO $ trials 10000 $ evalStateT pokerDecision 0.0
-    withFile file WriteMode $ flip hPutStrLn $ "poker <- " ++ showR trials
+    -- trials <- sampleProbRIO $ trials 10000 $ evalStateT pokerDecision 0.0
+    -- withFile file WriteMode $ flip hPutStrLn $ showRNamed "poker" trials
+    -- trials <- sampleProbRIO $ trials 10000 $ evalStateT naiveGame 0.0
+    -- withFile file WriteMode $ flip hPutStrLn $ showRNamed "naiveGame" trials
+    trials <- sampleProbRIO $ trials 10000 $ evalStateT stagedGame 0.0
+    withFile file WriteMode $ flip hPutStrLn $ showRNamed "stagedGame" trials
