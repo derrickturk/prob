@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Main where
 
 import Control.Monad.Trans.Class
@@ -75,46 +77,68 @@ showR = ("c(" ++) . (++ ")") . concat . intersperse ", " . fmap show
 showRNamed :: Show a => String -> [a] -> String
 showRNamed name = (name ++) . (" <- " ++) . showR
 
-data VoiStage = VoiStage { stageCost :: Double
+data VoiDevelopment = VoiDevelopment { developmentCostMean :: Double
+                                     , developmentCostSd :: Double
+                                     , successChance :: Double
+                                     , successPayoutMean :: Double
+                                     , successPayoutRatio :: Double
+                                     }
+
+data VoiStage = VoiStage { stageCostMean :: Double
+                         , stageCostSd :: Double
                          , stageChance :: Double
                          }
 
-voiGame :: [VoiStage] -> StateT Double Prob Double
-voiGame stages = do
-  actualSuccess <- lift $ binary (0.3 :: Double)
+voiGame :: VoiDevelopment -> [VoiStage] -> StateT Double Prob (Double, Bool)
+voiGame VoiDevelopment{..} stages = do
+  actualSuccess <- lift $ binary successChance
   doIt <- runStages actualSuccess stages
-  when doIt $ modify (subtract 200)
+  when doIt $ do
+    cost <- lift $ normal developmentCostMean developmentCostSd
+    modify (subtract cost)
   when (doIt && actualSuccess) $ do
-    payout <- lift $ lognormalMeanRatio 500 5
+    payout <- lift $ lognormalMeanRatio successPayoutMean successPayoutRatio
     modify (+ payout)
-  get
+  net <- get
+  return (net, doIt == actualSuccess)
 
 runStages :: Bool -> [VoiStage] -> StateT Double Prob Bool
 runStages _ [] = return True
 runStages actualSuccess (s:stages) = do
-  modify (subtract $ stageCost s)
+  do
+    cost <- lift $ normal (stageCostMean s) (stageCostSd s)
+    modify (subtract cost)
   correctMeasurement <- lift $ binary $ stageChance s
   if correctMeasurement && not actualSuccess
+     || not correctMeasurement && actualSuccess
     then return False
     else runStages actualSuccess stages
 
+development :: VoiDevelopment
+development = VoiDevelopment { developmentCostMean = 500
+                             , developmentCostSd = 100
+                             , successChance = 0.25
+                             , successPayoutMean = 1500.0
+                             , successPayoutRatio = 5.0
+                             }
+
 explStage :: VoiStage
-explStage = VoiStage {
-                       stageCost = 50
-                     , stageChance = 0.6
+explStage = VoiStage { stageCostMean = 50
+                     , stageCostSd = 10
+                     , stageChance = 0.70
                      }
 
 appStage :: VoiStage
-appStage = VoiStage {
-                      stageCost = 50
-                    , stageChance = 0.9
+appStage = VoiStage { stageCostMean = 100
+                    , stageCostSd = 20
+                    , stageChance = 0.90
                     }
 
-naiveGame :: StateT Double Prob Double
-naiveGame = voiGame []
+naiveGame :: StateT Double Prob (Double, Bool)
+naiveGame = voiGame development []
 
-stagedGame :: StateT Double Prob Double
-stagedGame = voiGame [explStage, appStage]
+stagedGame :: StateT Double Prob (Double, Bool)
+stagedGame = voiGame development [explStage, appStage]
 
 main :: IO ()
 main = do
@@ -125,7 +149,15 @@ main = do
     withFile file WriteMode $ flip hPutStrLn $ "bimodal <- " ++ showR ts
     ts <- sampleProbRIO $ trials 10000 $ evalStateT pokerDecision 0.0
     withFile file AppendMode $ flip hPutStrLn $ showRNamed "poker" ts
+
     ts <- sampleProbRIO $ trials 10000 $ evalStateT naiveGame 0.0
-    withFile file AppendMode $ flip hPutStrLn $ showRNamed "naiveGame" ts
+    withFile file AppendMode $
+      flip hPutStrLn $ showRNamed "naiveGame" (fst <$> ts)
+    putStr "naive chance of correct decision: "
+    print $ (fromIntegral $ length (filter snd ts)) / 10000.0
+
     ts <- sampleProbRIO $ trials 10000 $ evalStateT stagedGame 0.0
-    withFile file AppendMode $ flip hPutStrLn $ showRNamed "stagedGame" ts
+    withFile file AppendMode $
+      flip hPutStrLn $ showRNamed "stagedGame" (fst <$> ts)
+    putStr "staged chance of correct decision: "
+    print $ (fromIntegral $ length (filter snd ts)) / 10000.0

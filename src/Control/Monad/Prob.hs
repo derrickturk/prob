@@ -93,7 +93,7 @@ condition p m = do
     else condition p m
 
 trials :: Int -> Prob a -> Prob [a]
-{-# INLINE[2] trials #-}
+{-# INLINE[1] trials #-}
 trials = replicateM
 
 {-# RULES
@@ -135,14 +135,14 @@ uniform :: (Random p) => (p, p) -> Prob p
 uniform (l, u) = Prob $ genR (l, u)
 
 normal :: (Random p, Floating p, Ord p) => p -> p -> Prob p
-{-# INLINE[2] normal #-}
+{-# INLINE[1] normal #-}
 normal mean sd = Prob $ do
   (z, _) <- genStandardNormals
   return $ mean + z * sd
 
 -- an optimized case
 normals :: (Random p, Floating p, Ord p) => Int -> p -> p -> Prob [p]
-{-# INLINE[2] normals #-}
+{-# INLINE[1] normals #-}
 normals n mean sd
   | n <= 0 = Prob $ return []
   | n == 1 = return <$> normal mean sd
@@ -152,12 +152,12 @@ normals n mean sd
       return $ (mean + z1 * sd):(mean + z2 * sd):rest
 
 lognormal :: (Random p, Floating p, Ord p) => p -> p -> Prob p
-{-# INLINE[2] lognormal #-}
+{-# INLINE[1] lognormal #-}
 lognormal logmean logsd = exp <$> normal logmean logsd
 
 -- TODO: handle arbitrary-quantile ratio?
 logParamsFromMeanRatio :: (Floating p) => p -> p -> (p, p)
-{-# INLINE[2] logParamsFromMeanRatio #-}
+{-# INLINE[1] logParamsFromMeanRatio #-}
 logParamsFromMeanRatio mean p10p90 = (logMean, logSD) where
   logSD = log p10p90 / 2.5631031310892016
   logMean = log mean - logSD * logSD / 2.0
@@ -167,12 +167,12 @@ lognormalMeanRatio mean p10p90 = lognormal logmean logsd where
   (logmean, logsd) = logParamsFromMeanRatio mean p10p90
 
 lognormals :: (Random p, Floating p, Ord p) => Int -> p -> p -> Prob [p]
-{-# INLINE[2] lognormals #-}
+{-# INLINE[1] lognormals #-}
 lognormals n logmean logsd = (fmap . fmap) exp $ normals n logmean logsd
 
 lognormalsMeanRatio :: (Random p, Floating p, Ord p) =>
                        Int -> p -> p -> Prob [p]
-{-# INLINE[2] lognormalsMeanRatio #-}
+{-# INLINE[1] lognormalsMeanRatio #-}
 lognormalsMeanRatio n mean p10p90 =
   let (logmean, logsd) = logParamsFromMeanRatio mean p10p90 in
   (fmap . fmap) exp $ normals n logmean logsd
